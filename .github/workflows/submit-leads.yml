@@ -1,8 +1,10 @@
 name: Submit leads
 
 on:
+  repository_dispatch:         # real time: the Google Sheet sends new leads here the moment they arrive
+    types: [new-leads]
   schedule:
-    - cron: '*/15 * * * *'     # every 15 minutes (GitHub may delay runs a few minutes)
+    - cron: '*/15 * * * *'     # safety net / leads.csv mode (GitHub may delay runs a few minutes)
   workflow_dispatch:           # "Run workflow" button, with a form for the links
     inputs:
       page_url:
@@ -30,7 +32,7 @@ permissions:
   contents: write              # lets the run save results back to the repo
 
 concurrency:
-  group: submit-leads          # never run two at once
+  group: submit-leads          # one run at a time; the sheet re-sends any lead that gets skipped
   cancel-in-progress: false
 
 jobs:
@@ -43,12 +45,17 @@ jobs:
         with:
           node-version: 20
       - run: npm install
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package.json') }}
       - run: npx playwright install --with-deps chromium
       - run: node agent.js
         env:
-          # Typed in the form above, or (for scheduled runs) saved as repository secrets PAGE_URL / LEADS_URL
+          # PAGE_URL: typed in the Run workflow form, or saved once as the repository secret PAGE_URL
           PAGE_URL: ${{ inputs.page_url || secrets.PAGE_URL }}
           LEADS_URL: ${{ inputs.leads_url || secrets.LEADS_URL }}
+          LEADS_JSON: ${{ github.event_name == 'repository_dispatch' && toJson(github.event.client_payload.leads) || '' }}
           LIMIT: ${{ inputs.limit || '20' }}
           RESET: ${{ inputs.reset && '1' || '' }}
           DEBUG: ${{ inputs.debug && '1' || '' }}
@@ -58,7 +65,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A -- leads.csv signups.csv results.csv
-          git diff --cached --quiet || (git commit -m "Update lead results" && git pull --rebase -q && git push)
+          for i in 1 2 3; do
+            git diff --cached --quiet && break
+            git commit -qm "Update lead results" 2>/dev/null || true
+            git pull --rebase -q && git push && break
+            sleep 3
+          done
       - name: Upload failure screenshots
         if: always() && inputs.debug
         uses: actions/upload-artifact@v4

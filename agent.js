@@ -95,15 +95,37 @@ function setLeadsFileStatus(row, status) {
   rows[row - 1][s] = status;
   fs.writeFileSync(LEADS_FILE, rows.map(line).join(''));
 }
+const ALIAS = { 'phone number': 'phone', 'phone no': 'phone', mobile: 'phone', 'mobile number': 'phone', 'contact number': 'phone',
+  'email address': 'email', 'e mail': 'email', firstname: 'first_name', 'first name': 'first_name', lastname: 'last_name',
+  'last name': 'last_name', surname: 'last_name', 'full name': 'full_name', name: 'full_name' };
+function canon(rec) {   // normalise column names (Meta uses phone_number, full_name...) and strip Meta's "p:" phone prefix
+  const out = {};
+  for (const [k, v0] of Object.entries(rec)) {
+    let v = String(v0 == null ? '' : v0).trim();
+    const ck = ALIAS[norm(k)] || norm(k).replace(/ /g, '_');
+    if (!ck) continue;
+    if (ck === 'phone') v = v.replace(/^p:/i, '').trim();
+    if (!out[ck]) out[ck] = v;
+  }
+  return out;
+}
 async function getPending(limit) {
+  if (process.env.LEADS_JSON) {       // real-time mode: the Google Sheet sends new leads straight to this run
+    const done = loadResults();
+    return JSON.parse(process.env.LEADS_JSON)
+      .map(l => ({ row: l.row, data: canon(l.data || {}) }))
+      .filter(l => (l.data.email || l.data.phone) && !done.has(keyOf(l.data)))
+      .slice(0, limit);
+  }
   const rows = parseCSV(await loadLeadsText());
   const header = rows[0].map(h => h.trim());
   const sIdx = header.indexOf('Status');
   const done = LEADS_URL ? loadResults() : null;
   const out = [];
   for (let i = 1; i < rows.length && out.length < limit; i++) {
-    const rec = {};
-    header.forEach((h, k) => { if (h && h !== 'Status') rec[h] = (rows[i][k] || '').trim(); });
+    const raw = {};
+    header.forEach((h, k) => { if (h && h !== 'Status') raw[h] = (rows[i][k] || '').trim(); });
+    const rec = canon(raw);
     if (!rec.email && !rec.phone) continue;
     if (LEADS_URL ? done.has(keyOf(rec)) : (sIdx >= 0 && (rows[i][sIdx] || '').trim() !== '')) continue;
     out.push({ row: i + 1, data: rec });
@@ -278,7 +300,7 @@ function resetData() {   // RESET=1: start a test from scratch
 process.on('unhandledRejection', e => { console.error('ERROR:', e.message || e); process.exit(1); });
 (async () => {
   if (['1', 'true'].includes(String(process.env.RESET || '').toLowerCase())) resetData();
-  console.log(`Leads: ${LEADS_URL ? 'sheet URL' : 'leads.csv'} | Page: ${USING_DEMO ? 'demo page' : new URL(PAGE_URL).host}`);
+  console.log(`Leads: ${process.env.LEADS_JSON ? 'sent from the Google Sheet' : LEADS_URL ? 'sheet URL' : 'leads.csv'} | Page: ${USING_DEMO ? 'demo page' : new URL(PAGE_URL).host}`);
   const leads = await getPending(LIMIT);
   console.log(`Pending leads: ${leads.length}`);
   if (!leads.length) return;
@@ -298,7 +320,7 @@ process.on('unhandledRejection', e => { console.error('ERROR:', e.message || e);
       fail++;
     }
     appendResult(keyOf(data), row, status);
-    if (!LEADS_URL) setLeadsFileStatus(row, status);
+    if (!LEADS_URL && !process.env.LEADS_JSON) setLeadsFileStatus(row, status);
     await sleep(DELAY_MS);
   }
   await browser.close();
