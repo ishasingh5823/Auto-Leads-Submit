@@ -3,10 +3,31 @@ name: Submit leads
 on:
   schedule:
     - cron: '*/15 * * * *'     # every 15 minutes (GitHub may delay runs a few minutes)
-  workflow_dispatch:           # lets you press "Run workflow" manually
+  workflow_dispatch:           # "Run workflow" button, with a form for the links
+    inputs:
+      page_url:
+        description: 'Landing page URL (leave blank for the demo page)'
+        required: false
+        default: ''
+      leads_url:
+        description: 'Leads sheet link: Google Sheet or CSV (leave blank to use leads.csv in this repo)'
+        required: false
+        default: ''
+      limit:
+        description: 'Max leads to submit in this run'
+        required: false
+        default: '20'
+      reset:
+        type: boolean
+        description: 'Clear previous results first (use when re-testing)'
+        default: false
+      debug:
+        type: boolean
+        description: 'Save a screenshot of each failed lead'
+        default: false
 
 permissions:
-  contents: write              # lets the run save results (leads.csv, signups.csv) back to the repo
+  contents: write              # lets the run save results back to the repo
 
 concurrency:
   group: submit-leads          # never run two at once
@@ -15,7 +36,7 @@ concurrency:
 jobs:
   submit:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,11 +46,24 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: node agent.js
         env:
-          PAGE_URL: ${{ secrets.PAGE_URL }}     # leave this secret unset to use the demo page
+          # Typed in the form above, or (for scheduled runs) saved as repository secrets PAGE_URL / LEADS_URL
+          PAGE_URL: ${{ inputs.page_url || secrets.PAGE_URL }}
+          LEADS_URL: ${{ inputs.leads_url || secrets.LEADS_URL }}
+          LIMIT: ${{ inputs.limit || '20' }}
+          RESET: ${{ inputs.reset && '1' || '' }}
+          DEBUG: ${{ inputs.debug && '1' || '' }}
       - name: Save results to the repo
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add leads.csv signups.csv
+          git add -A -- leads.csv signups.csv results.csv
           git diff --cached --quiet || (git commit -m "Update lead results" && git pull --rebase -q && git push)
+      - name: Upload failure screenshots
+        if: always() && inputs.debug
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-screenshots
+          path: screenshots/
+          if-no-files-found: ignore
+          retention-days: 3

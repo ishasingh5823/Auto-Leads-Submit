@@ -1,27 +1,24 @@
-# Lead agent: setup (about 15 minutes, all free)
+# Auto Leads Submit
 
-## 1. Google Sheet + bridge
-1. Create a Google Sheet. Rename the first tab to `Leads`. Import `sample-leads.csv` into it (File > Import > Replace current sheet).
-2. Extensions > Apps Script. Paste all of `bridge.gs`. Change `TOKEN` to a long random string (save it, you need it in step 3). Save.
-3. Deploy > New deployment > type: Web app > Execute as: Me > Who has access: Anyone > Deploy. Authorize when asked. Copy the Web app URL.
-4. Open the Web app URL in a browser: you should see {"ok":true,"service":"lead bridge"}.
+A GitHub agent that submits leads on a landing page form with a real browser, on a schedule or on demand.
 
-## 2. GitHub repo
-1. Create a new GitHub repo (private is fine) and upload everything in this folder (keep the .github folder).
-2. Repo > Settings > Secrets and variables > Actions > New repository secret:
-   - BRIDGE_URL = the Web app URL
-   - BRIDGE_TOKEN = the TOKEN from bridge.gs
-   (Leave PAGE_URL out for the demo test.)
+## Run it
+Actions > Submit leads > Run workflow. Fill in the form:
+- **Landing page URL**: the page with the form (blank = the demo page in /demo).
+- **Leads sheet link**: a Google Sheet or CSV link (blank = use leads.csv in this repo).
+- **Reset**: tick when re-testing, to clear earlier results.
+- **Debug**: saves a screenshot of any failed lead.
 
-## 3. Test on the demo page
-1. Repo > Actions > "Submit leads" > Run workflow.
-2. Watch the log: each lead is submitted on the demo page.
-3. In your Sheet: `Leads` tab Status column fills in, and a new `Signups` tab appears with every registration. That is the output.
-4. It then runs by itself every 15 minutes. New rows with an empty Status get picked up automatically.
+For the scheduled run (every 15 minutes), save the two links once as repository secrets named PAGE_URL and LEADS_URL (Settings > Secrets and variables > Actions).
 
-## 4. Switch to the real landing page
-1. Set repo secret PAGE_URL to the real page.
-2. Edit FIELDS, CONSENT_SEL, SUBMIT_SEL, SUCCESS_SEL at the top of agent.js to match the real form (right-click a field > Inspect to find ids/names).
-3. Test with 2-3 rows first.
+## Leads sheet
+Columns like: first_name, last_name, email, phone, city, slot (any extra columns are used if the form has a matching field).
+A Google Sheet link only works if the sheet is shared as "Anyone with the link can view" (if your company allows it). Otherwise paste the leads into leads.csv.
 
-Notes: a stuck "Processing" status means a run was interrupted; clear the cell to retry. Only submit leads who opted in to this offer. CAPTCHAs are not bypassed.
+## Output (committed back to this repo)
+- results.csv: every lead tried, Submitted or Failed with the reason
+- signups.csv: confirmed submissions
+- leads.csv: Status column filled in (when using leads.csv)
+
+## Limits
+The agent finds the form fields itself (by label, placeholder, type). It does not bypass CAPTCHAs, and it can't handle multi-step forms or forms inside an embedded iframe. Only submit leads who opted in to this offer. This repo is public: do not put real lead data in it. Use a private repo for real leads.
