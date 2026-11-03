@@ -32,7 +32,7 @@ permissions:
   contents: write              # lets the run save results back to the repo
 
 concurrency:
-  group: submit-leads          # one run at a time; the sheet re-sends any lead that gets skipped
+  group: submit-leads-${{ github.event.client_payload.campaign || 'default' }}   # one run at a time per campaign; the sheet re-sends any lead that gets skipped
   cancel-in-progress: false
 
 jobs:
@@ -52,8 +52,10 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: node agent.js
         env:
-          # PAGE_URL: typed in the Run workflow form, or saved once as the repository secret PAGE_URL
-          PAGE_URL: ${{ inputs.page_url || secrets.PAGE_URL }}
+          # PAGE_URL: sent by the campaign sheet, typed in the Run workflow form, or saved as the repository secret PAGE_URL
+          PAGE_URL: ${{ github.event.client_payload.page_url || inputs.page_url || secrets.PAGE_URL }}
+          CAMPAIGN: ${{ github.event.client_payload.campaign || '' }}
+          ALLOWED_HOSTS: ${{ vars.ALLOWED_HOSTS }}      # optional repo variable: comma-separated approved landing page domains
           LEADS_URL: ${{ inputs.leads_url || secrets.LEADS_URL }}
           LEADS_JSON: ${{ github.event_name == 'repository_dispatch' && toJson(github.event.client_payload.leads) || '' }}
           LIMIT: ${{ inputs.limit || '20' }}
@@ -64,7 +66,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A -- leads.csv signups.csv results.csv
+          git add -A -- data leads.csv signups.csv results.csv
           for i in 1 2 3; do
             git diff --cached --quiet && break
             git commit -qm "Update lead results" 2>/dev/null || true

@@ -22,9 +22,26 @@ const LIMIT = Number(process.env.LIMIT || 20);
 const DELAY_MS = Number(process.env.DELAY_MS || 1500);
 const DEBUG = ['1', 'true'].includes(String(process.env.DEBUG || '').toLowerCase());
 const DIR = process.env.DATA_DIR || __dirname;
+// CAMPAIGN keeps each campaign's results in its own folder (data/<campaign>/), so many campaigns share one engine
+const CAMPAIGN = (process.env.CAMPAIGN || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+const OUT_DIR = CAMPAIGN ? path.join(DIR, 'data', CAMPAIGN) : DIR;
+if (CAMPAIGN) fs.mkdirSync(OUT_DIR, { recursive: true });
 const LEADS_FILE = path.join(DIR, 'leads.csv');
-const RESULTS_FILE = path.join(DIR, 'results.csv');
-const SIGNUPS_FILE = path.join(DIR, 'signups.csv');
+const RESULTS_FILE = path.join(OUT_DIR, 'results.csv');
+const SIGNUPS_FILE = path.join(OUT_DIR, 'signups.csv');
+
+// Safety: only http(s) pages, never internal addresses, and (if the team sets ALLOWED_HOSTS) only approved domains
+const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+function checkPageUrl(u) {
+  if (u === DEMO) return;
+  let url; try { url = new URL(u); } catch (e) { throw new Error('PAGE_URL is not a valid link'); }
+  if (!/^https?:$/.test(url.protocol)) throw new Error('PAGE_URL must start with http:// or https://');
+  const h = url.hostname.toLowerCase();
+  if (!process.env.ALLOW_LOCAL && /^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1|0\.0\.0\.0)/.test(h))
+    throw new Error('PAGE_URL points to an internal address, which is not allowed');
+  if (ALLOWED_HOSTS.length && !ALLOWED_HOSTS.some(a => h === a || h.endsWith('.' + a)))
+    throw new Error('PAGE_URL host ' + h + ' is not in the approved list (ALLOWED_HOSTS)');
+}
 
 const mask = e => (USING_DEMO ? e : String(e || '').replace(/^(.).*(@.*)$/, '$1***$2'));   // keep emails out of public logs
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -114,7 +131,7 @@ async function getPending(limit) {
     const done = loadResults();
     return JSON.parse(process.env.LEADS_JSON)
       .map(l => ({ row: l.row, data: canon(l.data || {}) }))
-      .filter(l => (l.data.email || l.data.phone) && !done.has(keyOf(l.data)))
+      .filter(l => (l.data.email || l.data.phone) && !/^Submitted/.test(done.get(keyOf(l.data)) || ''))
       .slice(0, limit);
   }
   const rows = parseCSV(await loadLeadsText());
@@ -300,6 +317,8 @@ function resetData() {   // RESET=1: start a test from scratch
 process.on('unhandledRejection', e => { console.error('ERROR:', e.message || e); process.exit(1); });
 (async () => {
   if (['1', 'true'].includes(String(process.env.RESET || '').toLowerCase())) resetData();
+  checkPageUrl(PAGE_URL);
+  if (CAMPAIGN) console.log('Campaign: ' + CAMPAIGN);
   console.log(`Leads: ${process.env.LEADS_JSON ? 'sent from the Google Sheet' : LEADS_URL ? 'sheet URL' : 'leads.csv'} | Page: ${USING_DEMO ? 'demo page' : new URL(PAGE_URL).host}`);
   const leads = await getPending(LIMIT);
   console.log(`Pending leads: ${leads.length}`);
