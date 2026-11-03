@@ -35,16 +35,24 @@ const SUBMIT_SEL = '#submitBtn';
 const SUCCESS_SEL = '#thanks';    // element that appears when the signup worked
 // ------------------------------------------------------------------------------------
 
+async function parse(r) {
+  const t = await r.text();
+  try { return JSON.parse(t); }
+  catch (e) {
+    throw new Error('Bridge did not return JSON (HTTP ' + r.status + ', ' + r.url.split('?')[0].slice(0, 60) + '). ' +
+      'Usually the Apps Script web app access is not "Anyone", the URL is wrong, or the deployment is not the latest version. ' +
+      'Response starts: ' + t.slice(0, 120).replace(/\s+/g, ' '));
+  }
+}
 async function getJSON(url) {
-  const r = await fetch(url, { redirect: 'follow' });
-  return r.json();
+  return parse(await fetch(url, { redirect: 'follow' }));
 }
 async function postJSON(url, body) {
-  const r = await fetch(url, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body) });
-  return r.json();
+  return parse(await fetch(url, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body) }));
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+process.on('unhandledRejection', e => { console.error('ERROR:', e.message || e); process.exit(1); });
 (async () => {
   const pending = await getJSON(`${BRIDGE_URL}${BRIDGE_URL.includes('?') ? '&' : '?'}action=pending&limit=${LIMIT}&token=${encodeURIComponent(BRIDGE_TOKEN)}`);
   if (!pending.ok) { console.error('Bridge error:', pending.error); process.exit(1); }
