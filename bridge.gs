@@ -60,7 +60,7 @@ function claimPending_(limit) {
   lock.waitLock(10000);
   try {
     const sh = SpreadsheetApp.getActive().getSheetByName(LEADS_TAB);
-    const values = sh.getDataRange().getValues();
+    const values = sh.getDataRange().getDisplayValues();   // display text, so "9:00 AM" stays text, not a Date
     const head = values[0].map(h => String(h).trim());
     let sCol = head.indexOf(STATUS_HEADER);
     if (sCol < 0) { sCol = head.length; head.push(STATUS_HEADER); sh.getRange(1, sCol + 1).setValue(STATUS_HEADER); }
