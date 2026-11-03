@@ -59,7 +59,7 @@ function claimPending_(limit) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const sh = SpreadsheetApp.getActive().getSheetByName(LEADS_TAB);
+    const sh = leadsSheet_();
     const values = sh.getDataRange().getDisplayValues();   // display text, so "9:00 AM" stays text, not a Date
     const head = values[0].map(h => String(h).trim());
     let sCol = head.indexOf(STATUS_HEADER);
@@ -79,8 +79,14 @@ function claimPending_(limit) {
 }
 
 function setStatus_(row, status) {
-  const sh = SpreadsheetApp.getActive().getSheetByName(LEADS_TAB);
+  const sh = leadsSheet_();
   const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h).trim());
   const sCol = head.indexOf(STATUS_HEADER);
   if (sCol >= 0 && row > 1) sh.getRange(row, sCol + 1).setValue(status);
+}
+
+// Uses the "Leads" tab, or the first tab if no tab has that name.
+function leadsSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  return ss.getSheetByName(LEADS_TAB) || ss.getSheets()[0];
 }
