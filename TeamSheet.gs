@@ -32,6 +32,7 @@ function onOpen() {
     .addItem('Pause', 'pause')
     .addToUi();
   settingsSheet_();
+  refreshColumnList_();
 }
 
 // ---------- helpers ----------
@@ -52,9 +53,34 @@ function settingsSheet_() {
     sh.getRange('A6').setValue('New leads go in the Leads tab (headers in row 1). Results appear in the Results tab and in the Status column.');
     sh.getRange('A1:A3').setFontWeight('bold');
     sh.getRange('B1:B2').setBackground('#FFF2CC');
-    sh.setColumnWidth(1, 160); sh.setColumnWidth(2, 460);
+    sh.setColumnWidth(1, 200); sh.setColumnWidth(2, 460); sh.setColumnWidth(3, 200);
   }
+  ensureFieldTable_(sh);
   return sh;
+}
+// Editable table: which lead column goes into which form field (rows 9-28). Empty = the agent matches by name.
+const FIELD_ROWS = 'A9:C28';
+function ensureFieldTable_(sh) {
+  if (String(sh.getRange('A8').getDisplayValue()).trim() === 'Lead column') return;
+  sh.getRange('A7').setValue('Collecting different info, or the form words things differently? List it below. Leave empty to let the agent match automatically.');
+  sh.getRange('A8:C8').setValues([['Lead column', 'Form field (words from its label)', 'Fixed answer (same for every lead)']]);
+  sh.getRange('A8:C8').setFontWeight('bold').setBackground('#1F3864').setFontColor('#FFFFFF');
+  sh.getRange('A9:C9').setValues([['role', 'Which role', '']]);   // example row: clear it if not needed
+}
+function refreshColumnList_() {   // dropdown in "Lead column" listing the headers of the Leads tab
+  try {
+    const leads = SpreadsheetApp.getActive().getSheetByName(CFG.LEADS_TAB);
+    if (!leads || leads.getLastColumn() < 1) return;
+    const heads = leads.getRange(1, 1, 1, leads.getLastColumn()).getDisplayValues()[0].map(h => String(h).trim()).filter(h => h && h !== CFG.STATUS_HEADER);
+    if (!heads.length) return;
+    const rule = SpreadsheetApp.newDataValidation().requireValueInList(heads, true).setAllowInvalid(true).build();
+    settingsSheet_().getRange('A9:A28').setDataValidation(rule);
+  } catch (e) { /* the dropdown is a convenience only */ }
+}
+function readFieldMap_() {
+  const v = settingsSheet_().getRange(FIELD_ROWS).getDisplayValues();
+  return v.map(r => ({ column: String(r[0]).trim(), field: String(r[1]).trim(), value: String(r[2]).trim() }))
+    .filter(e => e.field && (e.column || e.value));
 }
 function readSettings_() {
   const sh = settingsSheet_();
@@ -70,8 +96,14 @@ function gh_(path, opts) {
   return UrlFetchApp.fetch('https://api.github.com/repos/' + CFG.GITHUB_OWNER + '/' + CFG.GITHUB_REPO + path, o);
 }
 function note_(msg) { props_().setProperty('LAST_NOTE', new Date().toISOString() + ' ' + msg); }
-function emailCol_(head) { return head.findIndex(h => ['email', 'email address', 'e mail'].includes(norm_(h))); }
-function phoneCol_(head) { return head.findIndex(h => ['phone', 'phone number', 'mobile', 'mobile number'].includes(norm_(h))); }
+function emailCol_(head) {
+  const i = head.findIndex(h => ['email', 'email address', 'e mail'].includes(norm_(h)));
+  return i >= 0 ? i : head.findIndex(h => /\be ?mail\b/.test(norm_(h)));   // e.g. "work_email"
+}
+function phoneCol_(head) {
+  const i = head.findIndex(h => ['phone', 'phone number', 'mobile', 'mobile number'].includes(norm_(h)));
+  return i >= 0 ? i : head.findIndex(h => /\b(phone|mobile|cell|whatsapp)\b/.test(norm_(h)));
+}
 function keyOf_(row, head) {
   const e = emailCol_(head), p = phoneCol_(head);
   return String((e >= 0 && row[e]) || (p >= 0 ? String(row[p]).replace(/^p:/i, '') : '')).trim().toLowerCase();
@@ -104,6 +136,7 @@ function start() {
   ScriptApp.newTrigger('dispatchPending').timeBased().everyMinutes(5).create();
   props_().setProperty('RUNNING', '1');
   setAgentStatus_('Running');
+  refreshColumnList_();
   dispatchPending();
   syncResults();
   say_('Started', 'The agent is running for "' + s.campaign + '". New leads in the ' + CFG.LEADS_TAB + ' tab are submitted automatically.');
@@ -163,7 +196,7 @@ function dispatchPending() {
     }
     if (!leads.length) return;
     const res = gh_('/dispatches', { method: 'post', contentType: 'application/json',
-      payload: JSON.stringify({ event_type: 'new-leads', client_payload: { campaign: s.campaign, page_url: s.pageUrl, leads } }) });
+      payload: JSON.stringify({ event_type: 'new-leads', client_payload: { campaign: s.campaign, page_url: s.pageUrl, field_map: readFieldMap_(), leads } }) });
     const code = res.getResponseCode();
     if (code === 204) {
       const stamp = 'Queued ' + new Date().toISOString();

@@ -22,6 +22,7 @@ Nothing is made public: the sheet only makes outbound calls to GitHub.
 2. Settings tab: type the campaign name and the landing page URL.
 3. Lead Agent > Connect to GitHub (paste the team token), then Lead Agent > Start.
 4. Send Meta leads into the Leads tab (headers like full_name, email, phone_number, city; extra columns are used if the form asks for them).
+   Different info, or the form words things differently? Fill the **Form fields** table in the Settings tab: the words from the form's label, plus the lead column to use or a fixed answer (for example "How did you hear about us" = Facebook).
 5. Add the campaign in the Console so everyone can follow it.
 
 To retry a failed lead, clear its Status cell. Lead Agent > Pause stops sending.

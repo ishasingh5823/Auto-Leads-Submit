@@ -58,6 +58,7 @@ jobs:
           ALLOWED_HOSTS: ${{ vars.ALLOWED_HOSTS }}      # optional repo variable: comma-separated approved landing page domains
           LEADS_URL: ${{ inputs.leads_url || secrets.LEADS_URL }}
           LEADS_JSON: ${{ github.event_name == 'repository_dispatch' && toJson(github.event.client_payload.leads) || '' }}
+          FIELD_MAP: ${{ github.event_name == 'repository_dispatch' && toJson(github.event.client_payload.field_map) || '' }}
           LIMIT: ${{ inputs.limit || '20' }}
           RESET: ${{ inputs.reset && '1' || '' }}
           DEBUG: ${{ inputs.debug && '1' || '' }}

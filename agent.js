@@ -47,6 +47,14 @@ const mask = e => (USING_DEMO ? e : String(e || '').replace(/^(.).*(@.*)$/, '$1*
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
+// Editable field mapping from the sheet's Settings tab: [{column, field, value}]
+//   field  = words from the form's label/placeholder; column = lead column to put there; value = fixed answer for every lead
+let FIELD_MAP = [];
+try {
+  const fm = JSON.parse(process.env.FIELD_MAP || '[]');
+  if (Array.isArray(fm)) FIELD_MAP = fm.filter(e => e && String(e.field || '').trim() && (String(e.column || '').trim() || String(e.value || '').trim())).slice(0, 40);
+} catch (e) { /* ignore a malformed map and fall back to automatic matching */ }
+
 // ---------- CSV helpers ----------
 function parseCSV(text) {
   const rows = []; let row = [], cur = '', q = false;
@@ -124,6 +132,12 @@ function canon(rec) {   // normalise column names (Meta uses phone_number, full_
     if (ck === 'phone') v = v.replace(/^p:/i, '').trim();
     if (!out[ck]) out[ck] = v;
   }
+  // headers like "work_email" or "mobile number 2" still count as the lead's email / phone when no exact column exists
+  for (const [k, v0] of Object.entries(rec)) {
+    const n = norm(k), v = String(v0 == null ? '' : v0).trim();
+    if (!out.email && /\be ?mail\b/.test(n)) out.email = v;
+    if (!out.phone && /\b(phone|mobile|cell|whatsapp)\b/.test(n)) out.phone = v.replace(/^p:/i, '').trim();
+  }
   return out;
 }
 async function getPending(limit) {
@@ -154,6 +168,16 @@ async function getPending(limit) {
 const SYN = { zip: ['zip', 'zipcode', 'postal', 'postcode', 'pin code'], state: ['state', 'province'], city: ['city', 'town'],
   country: ['country'], company: ['company', 'employer', 'organization', 'organisation'], job_title: ['job title', 'position', 'role'] };
 const CONSENT_RE = /consent|agree|terms|privacy|policy|opt in|opt-in|contact me|i accept|subscribe|updates|communications|sms|text me|call me/;
+
+const canonKey = k => ALIAS[norm(k)] || norm(k).replace(/ /g, '_');
+const descOf = c => norm([c.name, c.id, c.placeholder, c.aria, c.auto, c.label].join(' '));
+function mapFor(c) { const d = descOf(c); return FIELD_MAP.find(e => { const f = norm(e.field); return f && d.includes(f); }); }
+function pickOption(c, val) {
+  const want = norm(val);
+  if (!want) return null;
+  return c.options.find(o => norm(o.text) === want || norm(o.value) === want) ||
+         c.options.find(o => norm(o.text) && (norm(o.text).includes(want) || want.includes(norm(o.text)))) || null;
+}
 
 async function describeControls(page) {
   return page.evaluate(() => {
@@ -222,6 +246,15 @@ async function fillForm(page, data) {
     const role = roleOf(c, data);
     const label = c.label || c.placeholder || c.name || c.id || c.type;
     try {
+      const m = mapFor(c);
+      if (m) {   // the team told us what goes in this field
+        const val = String(m.value || '').trim() || String(data[canonKey(m.column)] || '').trim();
+        if (c.type === 'checkbox') { if (/^(yes|true|1|on|checked|y)$/i.test(val)) await loc.check({ timeout: 3000 }); else if (c.required) unfilled.push(label); continue; }
+        if (c.type === 'radio') { if (c.required) unfilled.push(label); continue; }
+        if (c.tag === 'select') { const o = pickOption(c, val); if (o) await loc.selectOption({ value: o.value }); else if (c.required) unfilled.push(label); continue; }
+        if (val) await loc.fill(val, { timeout: 5000 }); else if (c.required) unfilled.push(label);
+        continue;
+      }
       if (role === '__consent') { await loc.check({ timeout: 3000 }); continue; }
       const val = role ? valueFor(role, data) : '';
       if (c.tag === 'select') {

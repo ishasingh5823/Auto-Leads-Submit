@@ -8,6 +8,8 @@ class Range {
   constructor(sh, r, c, nr, nc) { if (typeof r === 'string') [r, c, nr, nc] = a1(r); Object.assign(this, { sh, r, c, nr: nr || 1, nc: nc || 1 }); }
   setValue(v) { this.sh.set(this.r, this.c, v); return this; }
   setValues(a) { a.forEach((row, i) => row.forEach((v, j) => this.sh.set(this.r + i, this.c + j, v))); return this; }
+  getDisplayValues() { return Array.from({ length: this.nr }, (_, i) => Array.from({ length: this.nc }, (_, j) => String((this.sh.d[this.r - 1 + i] || [])[this.c - 1 + j] ?? ''))); }
+  setDataValidation() { return this; }
   getDisplayValue() { return String((this.sh.d[this.r - 1] || [])[this.c - 1] ?? ''); }
   clearContent() { for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) this.sh.set(this.r + i, this.c + j, ''); return this; }
   setFontWeight() { return this; } setBackground() { return this; } setFontColor() { return this; }
@@ -17,6 +19,7 @@ class Sheet {
   set(r, c, v) { while (this.d.length < r) this.d.push([]); const row = this.d[r - 1]; while (row.length < c) row.push(''); row[c - 1] = v; }
   getDataRange() { const w = Math.max(...this.d.map(r => r.length), 0); return { getDisplayValues: () => this.d.map(r => Array.from({ length: w }, (_, i) => String(r[i] == null ? '' : r[i]))) }; }
   getRange(...a) { return new Range(this, ...a); }
+  getLastColumn() { return Math.max(...this.d.map(r => r.length), 0); }
   getLastRow() { return this.d.length; } getMaxRows() { return this.maxRows; }
   insertRowsAfter(_, n) { this.maxRows += n; } setFrozenRows() {} autoResizeColumns() {} setColumnWidth() {}
 }
@@ -26,7 +29,7 @@ const props = {}, fetches = [], alerts = [], triggers = []; let resultsCsv = nul
 const trig = (fn) => ({ forSpreadsheet() { return this; }, onChange() { return this; }, timeBased() { return this; }, everyMinutes() { return this; }, create() { triggers.push(fn); } });
 const ctx = {
   console, Date, JSON, Math, String, Array, Object, Number, Logger: { log() {} },
-  SpreadsheetApp: { getActive: () => ({ getSheetByName: n => sheets[n] || null, insertSheet: n => (sheets[n] = new Sheet(n)) }),
+  SpreadsheetApp: { newDataValidation: () => ({ requireValueInList() { return this; }, setAllowInvalid() { return this; }, build() { return {}; } }), getActive: () => ({ getSheetByName: n => sheets[n] || null, insertSheet: n => (sheets[n] = new Sheet(n)) }),
     getUi: () => ({ ButtonSet: { OK: 'OK', OK_CANCEL: 'OK_CANCEL' }, Button: { OK: 'OK' }, alert: (t, m) => alerts.push(t + ': ' + m),
       prompt: () => ({ getSelectedButton: () => 'OK', getResponseText: () => promptText }),
       createMenu: () => ({ addItem() { return this; }, addSeparator() { return this; }, addToUi() {} }) }) },
@@ -78,6 +81,17 @@ sheets.Leads.d[1][4] = 'Queued ' + ago(12); sheets.Leads.d[2][4] = 'Queued ' + a
 run('syncResults');
 ok(/^Submitted/.test(status()[1]) && /^Failed: No confirmation/.test(status()[2]), 'Status column updates from results');
 ok(sheets.Results.d[3][1] === 'Failed' && sheets.Results.d[4][1] === 'Submitted', 'Results tab lists newest first');
+
+// editable form-field table travels with each dispatch
+ok(sheets.Settings.d[7][0] === 'Lead column' && sheets.Settings.d[8][0] === 'role', 'Settings tab gets the editable Form fields table (with an example row)');
+ok(Array.isArray(p.client_payload.field_map) && p.client_payload.field_map.length === 1 && p.client_payload.field_map[0].field === 'Which role', 'dispatch carries the field map from the table');
+sheets.Settings.d[8] = ['', 'How did you hear', 'Facebook']; sheets.Settings.d[9] = ['city', 'Town', ''];
+sheets.Leads.d.push(['Zed Zee', 'zed@example.com', 'p:+911111111111', 'Pune']);
+const nMap = dispatches().length; run('dispatchPending');
+const fm = JSON.parse(dispatches()[nMap].o.payload).client_payload.field_map;
+ok(fm.length === 2 && fm[0].value === 'Facebook' && fm[1].column === 'city', 'editing the table changes what is sent; empty rows are ignored');
+sheets.Leads.d.pop();   // remove the extra lead so later checks stay simple
+sheets.Settings.d[8] = []; sheets.Settings.d[9] = [];
 
 // teammate clears the failed Status to retry
 sheets.Leads.d[2][4] = '';
