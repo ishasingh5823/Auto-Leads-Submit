@@ -5,6 +5,9 @@ on:
     - cron: '*/15 * * * *'     # every 15 minutes (GitHub may delay runs a few minutes)
   workflow_dispatch:           # lets you press "Run workflow" manually
 
+permissions:
+  contents: write              # lets the run save results (leads.csv, signups.csv) back to the repo
+
 concurrency:
   group: submit-leads          # never run two at once
   cancel-in-progress: false
@@ -22,6 +25,11 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: node agent.js
         env:
-          BRIDGE_URL: ${{ secrets.BRIDGE_URL }}
-          BRIDGE_TOKEN: ${{ secrets.BRIDGE_TOKEN }}
           PAGE_URL: ${{ secrets.PAGE_URL }}     # leave this secret unset to use the demo page
+      - name: Save results to the repo
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add leads.csv signups.csv
+          git diff --cached --quiet || (git commit -m "Update lead results" && git pull --rebase -q && git push)
