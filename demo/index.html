@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hiring Event Registration (TEST PAGE)</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f4f6fa;color:#1b2430}
+  .banner{background:#1F3864;color:#fff;text-align:center;padding:8px;font-size:13px}
+  .wrap{max-width:520px;margin:24px auto;padding:0 16px}
+  .card{background:#fff;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.08);padding:24px}
+  h1{font-size:22px;margin:0 0 4px}
+  p.sub{margin:0 0 20px;color:#556}
+  label{display:block;font-size:14px;font-weight:600;margin:14px 0 6px}
+  input[type=text],input[type=email],input[type=tel],select{width:100%;padding:11px;border:1px solid #c5ccd8;border-radius:8px;font-size:15px}
+  .row{display:flex;gap:12px}.row>div{flex:1}
+  .check{display:flex;gap:8px;align-items:flex-start;margin-top:16px;font-size:13px;color:#445}
+  .check input{margin-top:3px}
+  button{margin-top:20px;width:100%;padding:13px;border:0;border-radius:8px;background:#E8742A;color:#fff;font-size:16px;font-weight:700;cursor:pointer}
+  button:hover{background:#cf6620}
+  .err{color:#b3261e;font-size:12px;margin-top:4px;display:none}
+  .invalid input,.invalid select{border-color:#b3261e}.invalid .err{display:block}
+  #thanks{display:none;text-align:center;padding:30px 10px}
+  #thanks h2{color:#1d7a3a;margin:0 0 8px}
+  .log{margin-top:20px;font-size:12px;color:#556}
+  .log a{color:#1F3864;cursor:pointer}
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12px}
+  td,th{border-bottom:1px solid #e3e7ef;padding:5px;text-align:left}
+</style>
+</head>
+<body>
+<div class="banner">TEST PAGE: for automation testing only. Data stays in your browser.</div>
+<div class="wrap">
+  <div class="card">
+    <div id="formWrap">
+      <h1>Register for our Hiring Event</h1>
+      <p class="sub">Saturday walk-in interviews. Reserve your slot below.</p>
+      <form id="leadForm" name="leadForm" novalidate>
+        <div class="row">
+          <div data-f="first_name"><label for="first_name">First name</label>
+            <input type="text" id="first_name" name="first_name" autocomplete="given-name" required>
+            <div class="err">Required</div></div>
+          <div data-f="last_name"><label for="last_name">Last name</label>
+            <input type="text" id="last_name" name="last_name" autocomplete="family-name" required>
+            <div class="err">Required</div></div>
+        </div>
+        <div data-f="email"><label for="email">Email</label>
+          <input type="email" id="email" name="email" autocomplete="email" required>
+          <div class="err">Enter a valid email</div></div>
+        <div data-f="phone"><label for="phone">Phone</label>
+          <input type="tel" id="phone" name="phone" autocomplete="tel" required>
+          <div class="err">Enter a 10-digit phone number</div></div>
+        <div data-f="city"><label for="city">City</label>
+          <input type="text" id="city" name="city" required>
+          <div class="err">Required</div></div>
+        <div data-f="slot"><label for="slot">Preferred time slot</label>
+          <select id="slot" name="slot" required>
+            <option value="">Select a slot</option>
+            <option>9:00 AM</option><option>11:00 AM</option>
+            <option>1:00 PM</option><option>3:00 PM</option>
+          </select>
+          <div class="err">Pick a slot</div></div>
+        <div class="check" data-f="consent">
+          <input type="checkbox" id="consent" name="consent">
+          <label for="consent" style="margin:0;font-weight:400">I agree to be contacted about this hiring event.</label>
+        </div>
+        <div data-f="consent"><div class="err">Consent is required</div></div>
+        <div class="err" id="saveErr">Could not save your registration. Please try again.</div>
+        <button type="submit" id="submitBtn">Register</button>
+      </form>
+    </div>
+    <div id="thanks">
+      <h2>Thank you! You're registered.</h2>
+      <p id="thanksMsg"></p>
+      <button type="button" id="again" style="background:#1F3864">Submit another</button>
+    </div>
+  </div>
+
+  <div class="log">
+    Submissions in this browser: <b id="count">0</b>
+    · <a id="toggle">view</a> · <a id="clear">clear</a> · <a id="csv">download CSV</a>
+    <div id="tableWrap" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // Paste your Apps Script web app URL here to save every signup to your Google Sheet ("Signups" tab).
+  var SIGNUP_ENDPOINT='';
+  var KEY='test_lead_submissions';
+  function load(){try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){return []}}
+  function save(a){try{localStorage.setItem(KEY,JSON.stringify(a))}catch(e){}}
+  var mem=load();
+  function refresh(){
+    document.getElementById('count').textContent=mem.length;
+    var w=document.getElementById('tableWrap');
+    if(!mem.length){w.innerHTML='<p>No submissions yet.</p>';return}
+    var h='<table><tr><th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>City</th><th>Slot</th></tr>';
+    mem.forEach(function(r,i){h+='<tr><td>'+(i+1)+'</td><td>'+esc(r.first_name+' '+r.last_name)+'</td><td>'+esc(r.email)+'</td><td>'+esc(r.phone)+'</td><td>'+esc(r.city)+'</td><td>'+esc(r.slot)+'</td></tr>'});
+    w.innerHTML=h+'</table>';
+  }
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function setErr(f,bad){
+    document.querySelectorAll('[data-f="'+f+'"]').forEach(function(el){el.classList.toggle('invalid',bad)});
+  }
+  var form=document.getElementById('leadForm');
+  form.addEventListener('submit',function(e){
+    e.preventDefault();
+    var d={};['first_name','last_name','email','phone','city','slot'].forEach(function(k){d[k]=form[k].value.trim()});
+    var digits=d.phone.replace(/\D/g,'');
+    var ok=true;
+    function chk(f,bad){setErr(f,bad);if(bad)ok=false}
+    chk('first_name',!d.first_name);chk('last_name',!d.last_name);
+    chk('email',!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email));
+    chk('phone',digits.length<10||digits.length>13);
+    chk('city',!d.city);chk('slot',!d.slot);chk('consent',!form.consent.checked);
+    if(!ok)return;
+    d.submitted_at=new Date().toISOString();
+    var ep=window.SIGNUP_ENDPOINT||SIGNUP_ENDPOINT;
+    var btn=document.getElementById('submitBtn'),errBox=document.getElementById('saveErr');
+    errBox.style.display='none';btn.disabled=true;
+    var saved=ep?fetch(ep,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify(d)}):Promise.resolve();
+    saved.then(function(){
+      mem.push(d);save(mem);refresh();
+      document.getElementById('thanksMsg').textContent='Confirmation for '+d.first_name+' '+d.last_name+' ('+d.email+') at '+d.slot+'.';
+      document.getElementById('formWrap').style.display='none';
+      document.getElementById('thanks').style.display='block';
+      document.title='Thank you - Registered';
+      history.replaceState(null,'','#thank-you');
+    }).catch(function(){
+      errBox.style.display='block';
+    }).then(function(){btn.disabled=false});
+  });
+  document.getElementById('again').onclick=function(){
+    form.reset();
+    document.getElementById('thanks').style.display='none';
+    document.getElementById('formWrap').style.display='block';
+    document.title='Hiring Event Registration (TEST PAGE)';
+    history.replaceState(null,'',location.pathname);
+  };
+  document.getElementById('toggle').onclick=function(){
+    var w=document.getElementById('tableWrap');w.style.display=w.style.display==='none'?'block':'none'};
+  document.getElementById('clear').onclick=function(){mem=[];save(mem);refresh()};
+  document.getElementById('csv').onclick=function(){
+    var rows=[['first_name','last_name','email','phone','city','slot','submitted_at']].concat(
+      mem.map(function(r){return [r.first_name,r.last_name,r.email,r.phone,r.city,r.slot,r.submitted_at]}));
+    var t=rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"'}).join(',')}).join('\n');
+    var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));
+    a.download='submissions.csv';a.click();
+  };
+  refresh();
+})();
+</script>
+</body>
+</html>
